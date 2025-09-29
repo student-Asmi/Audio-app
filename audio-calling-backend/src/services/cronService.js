@@ -13,6 +13,10 @@ class CronService {
     cron.schedule('*/5 * * * *', this.updateInactiveUsers);
 
     console.log('Cron jobs started');
+
+
+    
+
   }
 
   async cleanupExpiredOTPs() {
