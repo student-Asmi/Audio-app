@@ -75,9 +75,16 @@ app.use('*', (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 
-server.listen(PORT, () => {
+
+
+app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📱 Environment: ${process.env.NODE_ENV}`);
 });
+
+
+app.get("/", (req,res)=>{
+  res.send("helwww i love u.")
+})
 
 module.exports = { app, io };
