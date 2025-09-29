@@ -1,4 +1,8 @@
 {
-  "name": "myAudioApp",
-  "displayName": "myAudioApp"
+  "expo": {
+    "name": "myAudioApp",
+    "slug": "myAudioApp",
+    "scheme": "myaudioapp",
+    "displayName": "myAudioApp"
+  }
 }

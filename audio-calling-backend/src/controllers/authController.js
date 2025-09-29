@@ -9,6 +9,7 @@ const twilioClient = twilio(
 );
 
 class AuthController {
+  // ✅ Send OTP
   async sendOTP(req, res) {
     try {
       const { phone } = req.body;
@@ -21,48 +22,54 @@ class AuthController {
       const otp = crypto.randomInt(100000, 999999).toString();
       const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
-      // Store OTP in database
+      // Save OTP in DB
       const { error } = await supabaseAdmin
         .from('otp_verifications')
-        .upsert({
-          phone,
-          otp,
-          expires_at: expiresAt.toISOString(),
-          verified: false
-        });
+        .insert([
+          {
+            phone,
+            otp,
+            expires_at: expiresAt.toISOString(),
+            verified: false,
+          },
+        ])
+        .select();
 
       if (error) {
         console.error('Error storing OTP:', error);
-        return res.status(500).json({ error: 'Failed to send OTP' });
+        return res.status(500).json({ error: 'Failed to save OTP' });
       }
 
-      // Send OTP via Twilio (in production)
+      // ✅ Production: send OTP via Twilio
       if (process.env.NODE_ENV === 'production') {
         try {
           await twilioClient.messages.create({
             body: `Your Social Calling App verification code is: ${otp}`,
             from: process.env.TWILIO_PHONE_NUMBER,
-            to: phone
+            to: phone,
           });
         } catch (twilioError) {
           console.error('Twilio error:', twilioError);
-          // Continue anyway for demo purposes
+          return res
+            .status(500)
+            .json({ error: 'Failed to send OTP via SMS' });
         }
       }
 
-      // In development, return OTP for testing
+      // ✅ Development: return OTP in response
       const response = {
         message: 'OTP sent successfully',
-        ...(process.env.NODE_ENV !== 'production' && { demo_otp: otp })
+        ...(process.env.NODE_ENV !== 'production' && { demo_otp: otp }),
       };
 
-      res.json(response);
+      return res.json(response);
     } catch (error) {
       console.error('Send OTP error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      return res.status(500).json({ error: 'Internal server error' });
     }
   }
 
+  // ✅ Verify OTP
   async verifyOTP(req, res) {
     try {
       const { phone, otp, gender, dateOfBirth } = req.body;
@@ -71,7 +78,7 @@ class AuthController {
         return res.status(400).json({ error: 'Phone and OTP are required' });
       }
 
-      // Verify OTP
+      // Find OTP record
       const { data: otpRecord, error } = await supabaseAdmin
         .from('otp_verifications')
         .select('*')
@@ -79,6 +86,8 @@ class AuthController {
         .eq('otp', otp)
         .eq('verified', false)
         .gt('expires_at', new Date().toISOString())
+        .order('created_at', { ascending: false })
+        .limit(1)
         .single();
 
       if (error || !otpRecord) {
@@ -91,38 +100,43 @@ class AuthController {
         .update({ verified: true })
         .eq('id', otpRecord.id);
 
-      // Check if user exists
+      // ✅ Check if user exists
       let user;
       const { data: existingUser } = await supabaseAdmin
         .from('users')
         .select('*')
         .eq('phone', phone)
-        .single();
+        .maybeSingle();
 
       if (existingUser) {
         user = existingUser;
-        
-        // Update online status
+
+        // Update status
         await supabaseAdmin
           .from('users')
-          .update({ online: true, last_seen: new Date().toISOString() })
+          .update({
+            online: true,
+            last_seen: new Date().toISOString(),
+          })
           .eq('id', user.id);
       } else {
-        // Create new user
+        // New user → needs gender & DOB
         if (!gender || !dateOfBirth) {
-          return res.status(400).json({ 
-            error: 'Gender and date of birth are required for new users' 
+          return res.status(400).json({
+            error: 'Gender and date of birth are required for new users',
           });
         }
 
         const { data: newUser, error: createError } = await supabaseAdmin
           .from('users')
-          .insert({
-            phone,
-            gender,
-            date_of_birth: dateOfBirth,
-            online: true
-          })
+          .insert([
+            {
+              phone,
+              gender,
+              date_of_birth: dateOfBirth,
+              online: true,
+            },
+          ])
           .select()
           .single();
 
@@ -134,10 +148,10 @@ class AuthController {
         user = newUser;
       }
 
-      // Generate JWT token
+      // Generate JWT
       const token = generateToken(user.id);
 
-      res.json({
+      return res.json({
         message: 'Authentication successful',
         token,
         user: {
@@ -145,15 +159,16 @@ class AuthController {
           phone: user.phone,
           gender: user.gender,
           date_of_birth: user.date_of_birth,
-          online: user.online
-        }
+          online: true,
+        },
       });
     } catch (error) {
       console.error('Verify OTP error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      return res.status(500).json({ error: 'Internal server error' });
     }
   }
 
+  // ✅ Refresh token
   async refreshToken(req, res) {
     try {
       const { userId } = req.body;
@@ -162,7 +177,6 @@ class AuthController {
         return res.status(400).json({ error: 'User ID is required' });
       }
 
-      // Verify user exists
       const { data: user, error } = await supabaseAdmin
         .from('users')
         .select('*')
@@ -175,23 +189,18 @@ class AuthController {
 
       const token = generateToken(user.id);
 
-      res.json({
+      return res.json({
         message: 'Token refreshed successfully',
         token,
-        user: {
-          id: user.id,
-          phone: user.phone,
-          gender: user.gender,
-          date_of_birth: user.date_of_birth,
-          online: user.online
-        }
+        user,
       });
     } catch (error) {
       console.error('Refresh token error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      return res.status(500).json({ error: 'Internal server error' });
     }
   }
 
+  // ✅ Logout
   async logout(req, res) {
     try {
       const { userId } = req.body;
@@ -200,25 +209,19 @@ class AuthController {
         return res.status(400).json({ error: 'User ID is required' });
       }
 
-      // Update user online status
+      // Set user offline
       await supabaseAdmin
         .from('users')
-        .update({ 
-          online: false, 
-          last_seen: new Date().toISOString() 
+        .update({
+          online: false,
+          last_seen: new Date().toISOString(),
         })
         .eq('id', userId);
 
-      // Remove user sessions
-      await supabaseAdmin
-        .from('user_sessions')
-        .delete()
-        .eq('user_id', userId);
-
-      res.json({ message: 'Logged out successfully' });
+      return res.json({ message: 'Logged out successfully' });
     } catch (error) {
       console.error('Logout error:', error);
-      res.status(500).json({ error: 'Internal server error' });
+      return res.status(500).json({ error: 'Internal server error' });
     }
   }
 }

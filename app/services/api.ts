@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { Config } from '../config/environment';
+// import { AuthResponse, User, Call } from './types';
 import { AuthResponse, User, Call } from '../types';
 
 const api = axios.create({
@@ -44,7 +45,6 @@ export const authAPI = {
 };
 
 export const userAPI = {
-
   getUsers: (params?: { gender?: string; search?: string }) => 
     api.get<{ users: User[] }>('/users', { params }),
 

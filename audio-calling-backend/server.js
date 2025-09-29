@@ -8,11 +8,13 @@ const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 
-const authRoutes = require('./src/routes/auth');
-const userRoutes = require('./src/routes/users');
-const callRoutes = require('./src/routes/calls');
 const { authenticateSocket } = require('./src/middleware/auth');
 const { initializeSocket } = require('./src/services/socketService');
+
+// Import routes
+const authRoutes = require('./src/routes/auth');   // ✅ correct file name
+const userRoutes = require('./src/routes/users');
+const callRoutes = require('./src/routes/calls');
 
 const app = express();
 const server = http.createServer(app);
@@ -38,7 +40,7 @@ const limiter = rateLimit({
 app.use(limiter);
 
 // Routes
-app.use('/api/auth', authRoutes);
+app.use('/api/auth', authRoutes);   // ✅ e.g. POST /api/auth/send-otp
 app.use('/api/users', userRoutes);
 app.use('/api/calls', callRoutes);
 
@@ -68,23 +70,22 @@ app.use((err, req, res, next) => {
 const cronService = require('./src/services/cronService');
 cronService.start();
 
-// 404 handler
-app.use('*', (req, res) => {
-  res.status(404).json({ error: 'Route not found' });
-});
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 
-
-
-app.listen(PORT, () => {
+server.listen(PORT, () => {   // ✅ should listen on server (http + socket.io)
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📱 Environment: ${process.env.NODE_ENV}`);
 });
 
+app.get("/", (req, res) => {
+  res.status(200).send("Server is running 🚀");
+});
 
-app.get("/", (req,res)=>{
-  res.send("helwww i love u.")
-})
+app.use("*", (req, res) => {
+  res.status(404).json({ error: "Route not found" });
+});
+
+
 
 module.exports = { app, io };
